@@ -4,6 +4,7 @@ import com.ghostchu.quickshop.QuickShop;
 import com.ghostchu.quickshop.api.command.CommandHandler;
 import com.ghostchu.quickshop.api.command.CommandParser;
 import com.ghostchu.quickshop.api.shop.Shop;
+import com.ghostchu.quickshop.util.Util;
 import com.ghostchu.quickshop.util.logger.Log;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -37,12 +38,25 @@ public abstract class SubCommand_SilentBase implements CommandHandler<Player> {
       return;
     }
 
-    final Shop shop = plugin.getShopManager().getShopFromRuntimeRandomUniqueId(uuid);
-    if(shop != null) {
-      doSilentCommand(sender, shop, parser);
-    } else {
+    // UUID lookup must not read a shop's block from the player's region.
+    final Shop shop = plugin.getShopManager().getShopFromRuntimeRandomUniqueId(uuid, true);
+    if(shop == null) {
       plugin.text().of(sender, "not-looking-at-shop").send();
+      return;
     }
+    Util.regionThread(shop.bukkitLocation(), ()->{
+      final boolean valid = shop.isValid();
+      QuickShop.folia().getScheduler().runAtEntityLater(sender, ()->{
+        if(!sender.isOnline()) {
+          return;
+        }
+        if(valid) {
+          doSilentCommand(sender, shop, parser);
+        } else {
+          plugin.text().of(sender, "not-looking-at-shop").send();
+        }
+      }, 1);
+    });
   }
 
   protected abstract void doSilentCommand(Player sender, @NotNull Shop shop, @NotNull CommandParser parser);
