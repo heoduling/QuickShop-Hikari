@@ -26,7 +26,7 @@ import com.ghostchu.quickshop.config.GuiConfig;
 import com.ghostchu.quickshop.menu.shared.GuiChatAction;
 import com.ghostchu.quickshop.menu.shared.QuickShopPage;
 import com.ghostchu.quickshop.obj.QUserImpl;
-import com.ghostchu.quickshop.shop.history.ShopHistory;
+import com.ghostchu.quickshop.shop.history.ShopHistoryGui;
 import com.ghostchu.quickshop.util.ShopUtil;
 import com.ghostchu.quickshop.util.Util;
 import com.ghostchu.quickshop.util.logger.Log;
@@ -39,22 +39,17 @@ import net.tnemc.menu.core.compatibility.MenuPlayer;
 import net.tnemc.menu.core.icon.action.impl.RunnableAction;
 import net.tnemc.menu.core.icon.action.impl.SwitchMenuAction;
 import net.tnemc.menu.core.icon.impl.StateIcon;
-import net.tnemc.menu.core.manager.MenuManager;
 import net.tnemc.menu.core.viewer.MenuViewer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
-import static com.ghostchu.quickshop.menu.ShopHistoryMenu.HISTORY_RECORDS;
-import static com.ghostchu.quickshop.menu.ShopHistoryMenu.HISTORY_SUMMARY;
-import static com.ghostchu.quickshop.menu.ShopHistoryMenu.SHOPS_DATA;
 import static com.ghostchu.quickshop.menu.ShopKeeperMenu.KEEPER_MAIN;
 import static com.ghostchu.quickshop.shop.SimpleShopManager.ACTIVE_STATE;
 import static com.ghostchu.quickshop.shop.SimpleShopManager.BUYING_TYPE;
@@ -363,42 +358,8 @@ public class MainPage extends QuickShopPage {
                                                          .customName(getConfigDisplay(id, historyConfig, "<bold><light_purple>Transaction History</light_purple></bold>"))
                                                          .lore(getConfigLore(id, historyConfig)))
                                          .withActions(new RunnableAction((click)->{
-                                           // Close current menu and load history async
                                            viewer.get().close(QuickShop.getInstance().createMenuPlayer(player));
-
-                                           final List<Shop> shops = new ArrayList<>();
-                                           shops.add(shop.get());
-
-                                           final MenuPlayer menuPlayer = QuickShop.getInstance().createMenuPlayer(player);
-
-                                           Util.asyncThreadRun(()->{
-                                             final ShopHistory shopHistory = new ShopHistory(QuickShop.getInstance(), shops);
-
-                                             try {
-                                               final List<ShopHistory.ShopHistoryRecord> queryResult = shopHistory.query();
-                                               final ShopHistory.ShopSummary summary = shopHistory.generateSummary().join();
-                                               Log.debug(summary.toString());
-
-                                               if(queryResult == null) {
-                                                 return;
-                                               }
-
-                                               final MenuViewer historyViewer = new MenuViewer(id);
-                                               MenuManager.instance().addViewer(historyViewer);
-                                               historyViewer.addData(SHOPS_DATA, shops);
-                                               historyViewer.addData(HISTORY_RECORDS, queryResult);
-                                               historyViewer.addData(HISTORY_SUMMARY, summary);
-
-                                               Util.mainThreadRun(()->{
-                                                 MenuManager.instance().open("qs:history", 1, menuPlayer);
-                                               });
-
-                                             } catch(final Exception e) {
-                                               MenuManager.instance().removeViewer(id);
-                                               QuickShop.getInstance().text().of(id, "internal-error", id).send();
-                                               QuickShop.getInstance().logger().error("Couldn't query the shop history for shops {}.", shopHistory.shops(), e);
-                                             }
-                                           });
+                                           ShopHistoryGui.open(player, List.of(shop.get()));
                                          }))
                                          .withSlot(historySlot).build());
         }

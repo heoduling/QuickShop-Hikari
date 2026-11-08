@@ -17,7 +17,6 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Dropper;
 import org.bukkit.block.Hopper;
-import org.bukkit.entity.minecart.HopperMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.BlockExplodeEvent;
@@ -27,8 +26,9 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.world.StructureGrowEvent;
-import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.Inventory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -142,8 +142,8 @@ public class ShopProtectionListener extends AbstractProtectionListener {
       return;
     }
 
-    final InventoryHolder destinationHolder = event.getDestination().getHolder(false);
-    if (!(destinationHolder instanceof Hopper || destinationHolder instanceof HopperMinecart)) {
+    final Inventory destination = event.getDestination();
+    if (destination.getType() != InventoryType.HOPPER) {
       return;
     }
 
@@ -157,7 +157,7 @@ public class ShopProtectionListener extends AbstractProtectionListener {
       return;
     }
 
-    if(this.hopperOwnerExclude && destinationHolder instanceof final Hopper hopper) {
+    if(this.hopperOwnerExclude && destination.getHolder(false) instanceof final Hopper hopper) {
       final HopperPersistentData hopperPersistentData = hopper.getPersistentDataContainer().get(hopperKey, HopperPersistentDataType.INSTANCE);
       if(hopperPersistentData != null && shop.playerAuthorize(hopperPersistentData.getPlayer(), BuiltInShopPermission.ACCESS_INVENTORY)) {
         return;
@@ -173,8 +173,8 @@ public class ShopProtectionListener extends AbstractProtectionListener {
       return;
     }
 
-    final InventoryHolder destinationHolder = event.getDestination().getHolder(false);
-    if (!(destinationHolder instanceof final Dropper dropper)) {
+    final Inventory destination = event.getDestination();
+    if (destination.getType() != InventoryType.DROPPER) {
       return;
     }
 
@@ -188,7 +188,7 @@ public class ShopProtectionListener extends AbstractProtectionListener {
       return;
     }
 
-    if (this.dropperOwnerExclude) {
+    if (this.dropperOwnerExclude && destination.getHolder(false) instanceof final Dropper dropper) {
 
       final HopperPersistentData hopperPersistentData = dropper.getPersistentDataContainer().get(dropperKey, HopperPersistentDataType.INSTANCE);
       if (hopperPersistentData != null && shop.playerAuthorize(hopperPersistentData.getPlayer(), BuiltInShopPermission.ACCESS_INVENTORY)) {

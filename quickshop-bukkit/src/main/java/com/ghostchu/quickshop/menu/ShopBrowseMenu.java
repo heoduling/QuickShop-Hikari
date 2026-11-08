@@ -19,11 +19,11 @@ package com.ghostchu.quickshop.menu;
 
 import com.ghostchu.quickshop.QuickShop;
 import com.ghostchu.quickshop.config.GuiConfig;
+import com.ghostchu.quickshop.menu.browse.BrowsePage;
 import com.ghostchu.quickshop.menu.browse.GroupedItemPage;
 import com.ghostchu.quickshop.menu.browse.ShopListPage;
 import com.ghostchu.quickshop.menu.shared.QuickShopMenu;
 import net.tnemc.menu.core.Menu;
-import net.tnemc.menu.core.Page;
 
 /**
  * ShopBrowseMenu - Enhanced market browser with grouping, filtering, sorting, and search
@@ -57,15 +57,11 @@ public class ShopBrowseMenu extends Menu {
     setOpen((open)->open.getMenu().setTitle(QuickShopMenu.getTitle(open.getPlayer().identifier(), menuConfig, this.title, null)));
 
     // Page 1: Grouped item view (market overview)
-    final Page groupedPage = new Page(1);
     final GroupedItemPage groupedPageHandler = new GroupedItemPage(this.name, this.rows);
-    groupedPage.setOpen(groupedPageHandler::handle);
-    addPage(groupedPage);
+    addPage(new BrowsePage(1, this.name, groupedPageHandler::handle));
 
     // Page 2: Shop list view (all shops for a specific item)
-    final Page shopListPage = new Page(2);
     final ShopListPage shopListPageHandler = new ShopListPage(this.name, this.rows);
-    shopListPage.setOpen(shopListPageHandler::handle);
-    addPage(shopListPage);
+    addPage(new BrowsePage(2, this.name, shopListPageHandler::handle));
   }
 }

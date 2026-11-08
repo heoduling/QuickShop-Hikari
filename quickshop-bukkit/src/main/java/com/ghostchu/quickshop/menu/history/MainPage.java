@@ -25,6 +25,7 @@ import com.ghostchu.quickshop.api.shop.Shop;
 import com.ghostchu.quickshop.config.GuiConfig;
 import com.ghostchu.quickshop.obj.QUserImpl;
 import com.ghostchu.quickshop.shop.history.ShopHistory;
+import com.ghostchu.quickshop.shop.history.ShopHistoryGui;
 import com.ghostchu.quickshop.util.Util;
 import net.kyori.adventure.text.Component;
 import net.tnemc.item.AbstractItemStack;
@@ -101,10 +102,10 @@ public class MainPage {
       final Optional<Object> shopsData = viewer.get().findData(SHOPS_DATA);
       final Optional<Object> shopsHeaders = viewer.get().findData(SHOPS_HEADERS);
       final Optional<Object> historyData = viewer.get().findData(HISTORY_RECORDS);
-      final Map<Long, DataRecord> dataRecords = (Map<Long, DataRecord>) viewer.get().findData(HISTORY_DATA_RECORDS).orElse(Map.of());
+      final Map<Long, DataRecord> dataRecords = (Map<Long, DataRecord>)viewer.get().findData(HISTORY_DATA_RECORDS).orElse(Map.of());
       final Optional<Object> summaryData = viewer.get().findData(HISTORY_SUMMARY);
       final Player player = Bukkit.getPlayer(viewer.get().uuid());
-      if(shopsData.isPresent() && shopsHeaders.isPresent() && historyData.isPresent() && summaryData.isPresent() && player != null) {
+      if(shopsData.isPresent() && historyData.isPresent() && summaryData.isPresent() && player != null) {
 
         final ProxiedLocale locale = QuickShop.getInstance().getTextManager().findRelativeLanguages(player);
 
@@ -131,8 +132,11 @@ public class MainPage {
         final int items = (menuRows - 1) * offset;
         final int start = ((page - 1) * offset);
 
-        final List<Shop> shops = (ArrayList<Shop>)shopsData.get();
-        final Map<Long, Component> headers = (Map<Long, Component>)shopsHeaders.get();
+        final List<Shop> shops = (List<Shop>)shopsData.get();
+        if(shops.isEmpty()) {
+          return;
+        }
+        final Map<Long, Component> headers = shopsHeaders.isPresent()? (Map<Long, Component>)shopsHeaders.get() : ShopHistoryGui.buildShopHeaders(shops);
         final List<ShopHistory.ShopHistoryRecord> queryResult = (List<ShopHistory.ShopHistoryRecord>)historyData.get();
         final ShopHistory.ShopSummary summary = (ShopHistory.ShopSummary)summaryData.get();
 
@@ -273,26 +277,22 @@ public class MainPage {
           }
           if(i >= (start + items)) break;
 
-          if(dataRecord == null) continue;
-
-          ItemStack historyItem = QuickShop.getInstance().platform().decodeStack(dataRecord.getEncoded());
-          if(historyItem == null) {
-
-            //try the old serialization for old shops.
-            try {
-              historyItem = Util.deserialize(dataRecord.getItem());
-            } catch(final Exception ignore) {
-            }
-
+          ItemStack historyItem = null;
+          if(dataRecord != null) {
+            historyItem = QuickShop.getInstance().platform().decodeStack(dataRecord.getEncoded());
             if(historyItem == null) {
-
-              historyItem = new ItemStack(Material.STONE);
-              final ItemMeta meta = historyItem.getItemMeta();
-              if(meta != null) {
-
-                meta.setDisplayName("Failed to deserialize item");
-                historyItem.setItemMeta(meta);
+              try {
+                historyItem = Util.deserialize(dataRecord.getItem());
+              } catch(final Exception ignore) {
               }
+            }
+          }
+          if(historyItem == null) {
+            historyItem = new ItemStack(Material.STONE);
+            final ItemMeta meta = historyItem.getItemMeta();
+            if(meta != null) {
+              meta.setDisplayName("Failed to deserialize item");
+              historyItem.setItemMeta(meta);
             }
           }
           //final String type = historyItem.getType().getKey().getKey();
