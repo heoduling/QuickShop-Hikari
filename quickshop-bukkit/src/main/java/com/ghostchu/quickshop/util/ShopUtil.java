@@ -98,7 +98,7 @@ public class ShopUtil {
 
   public static boolean allowed(final Block shopBlock, final ItemStack itemStack) {
 
-    if(shopBlock.getState(false) instanceof ShulkerBox && itemStack.getItemMeta() instanceof BlockStateMeta blockMeta && blockMeta.getBlockState() instanceof ShulkerBox) {
+    if(shopBlock.getState(false) instanceof ShulkerBox && itemStack.getItemMeta() instanceof final BlockStateMeta blockMeta && blockMeta.getBlockState() instanceof ShulkerBox) {
       return false;
     }
 
@@ -595,15 +595,19 @@ public class ShopUtil {
     public void commit(final boolean sendMessage) {
 
       for(final Shop shop : shops) {
-
+        QuickShop.folia().getScheduler().runAtLocation(shop.bukkitLocation(), task -> {
         ShopOwnerEvent event = new ShopOwnerEvent(Phase.PRE, shop, shop.getOwner(), to);
         event.callEvent();
 
         event = event.clone(Phase.MAIN);
         if(event.callCancellableEvent()) {
-          continue;
+          return;
         }
         shop.setOwner(event.updated());
+
+        if (QuickShop.getInstance().getConfig().getBoolean("shop.remove-perms-on-transfer", true)) {
+          shop.resetPermissions();
+        }
 
         event = event.clone(Phase.POST);
         event.callEvent();
@@ -613,6 +617,8 @@ public class ShopUtil {
           QuickShop.getInstance().text().of(from, "transfer-accepted-fromside", event.updated()).send();
           QuickShop.getInstance().text().of(event.updated(), "transfer-accepted-toside", from).send();
         }
+        }
+        );
       }
     }
 

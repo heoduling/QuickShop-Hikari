@@ -4,6 +4,7 @@ import com.ghostchu.quickshop.QuickShop;
 import com.ghostchu.quickshop.api.shop.Info;
 import com.ghostchu.quickshop.api.shop.Shop;
 import com.ghostchu.quickshop.api.shop.ShopManager;
+import com.ghostchu.quickshop.api.localization.text.ProxiedLocale;
 import com.ghostchu.quickshop.api.shop.interaction.InteractionBehavior;
 import com.ghostchu.quickshop.api.shop.interaction.InteractionClick;
 import com.ghostchu.quickshop.api.shop.interaction.InteractionType;
@@ -18,26 +19,27 @@ import com.ghostchu.simplereloadlib.ReloadResult;
 import com.ghostchu.simplereloadlib.ReloadStatus;
 import net.tnemc.menu.core.manager.MenuManager;
 import org.bukkit.GameMode;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
-import org.bukkit.block.Container;
 import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerLocaleChangeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import io.papermc.paper.event.player.PlayerArmSwingEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,7 +64,7 @@ public class PlayerListener extends AbstractQSListener {
   }
 
   @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-  public void onAdventureClick(final PlayerAnimationEvent event) {
+  public void onAdventureClick(final PlayerArmSwingEvent event) {
 
     if(event.getPlayer().getGameMode() != GameMode.ADVENTURE) {
       return;
@@ -171,7 +173,7 @@ public class PlayerListener extends AbstractQSListener {
       }
     }
 
-    if(shop == null && b.getState(false) instanceof Container) {
+    if(shop == null && Util.canBeShop(b)) {
 
       return new AbstractMap.SimpleImmutableEntry<>(shop, InteractionClick.CONTAINER);
     }
@@ -217,7 +219,7 @@ public class PlayerListener extends AbstractQSListener {
 
     final UUID id = e.getPlayer().getUniqueId();
 
-    if(MenuManager.instance().inMenu(id) || !QuickShop.inShop.contains(id)) {
+    if(MenuManager.instance().inMenu(id) || !QuickShop.inShop.remove(id)) {
       return;
     }
 
@@ -226,19 +228,38 @@ public class PlayerListener extends AbstractQSListener {
       if(location == null) {
         return; /// ignored as workaround, GH-303
       }
-      //Cannot tick distance manager while unloading playerchunks
-      //https://github.com/pl3xgaming/Purpur/issues/631
-      if(!Util.isLoaded(location)) {
-        return;
-      }
-      final Shop shop = plugin.getShopManager().getShopIncludeAttached(location);
-      if(shop != null) {
-        shop.setSignText(plugin.text().findRelativeLanguages(e.getPlayer()));
+      final HumanEntity player = e.getPlayer();
+      final Runnable update = ()->{
+        if(!Util.isLoaded(location)) {
+          return;
+        }
+        final ProxiedLocale locale = plugin.text().findRelativeLanguages(player);
+        if(Bukkit.isOwnedByCurrentRegion(location)) {
+          refreshClosedShop(location, locale);
+        } else {
+          Bukkit.getRegionScheduler().run(plugin.getJavaPlugin(), location, task->refreshClosedShop(location, locale));
+        }
+      };
+      if(Bukkit.isOwnedByCurrentRegion(player)) {
+        update.run();
+      } else {
+        player.getScheduler().run(plugin.getJavaPlugin(), task->update.run(), null);
       }
     } catch(final NullPointerException ignored) {
     }
 
-    QuickShop.inShop.remove(id);
+  }
+
+  private void refreshClosedShop(final Location location, final ProxiedLocale locale) {
+
+    // The chunk may unload while the owner callback is queued.
+    if(!Util.isLoaded(location)) {
+      return;
+    }
+    final Shop shop = plugin.getShopManager().getShopIncludeAttached(location);
+    if(shop != null) {
+      shop.setSignText(locale);
+    }
   }
 
   @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)

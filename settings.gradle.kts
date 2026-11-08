@@ -11,6 +11,14 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven("https://repo.momirealms.net/releases")
+            }
+            filter {
+                includeGroup("net.momirealms")
+            }
+        }
         maven("https://repo.papermc.io/repository/maven-public/")
         maven("https://api.modrinth.com/maven")
         maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
@@ -27,7 +35,8 @@ dependencyResolutionManagement {
             }
         }
         maven("https://m2.dv8tion.net/releases")
-        maven("https://maven.devs.beer/")
+        maven("https://oss.sonatype.org/content/groups/public/")
+        maven("https://repo.spaceio.xyz/repository/maven-public/")
         maven("https://maven.enginehub.org/repo/")
         maven("https://maven.mohistmc.com/")
         maven("https://nexus.liggesmeyer.net/repository/maven-releases/")
@@ -84,10 +93,10 @@ project(":compatibility:common").projectDir = file("compatibility/common")
 
 listOf(
     "advancedregionmarket", "bentobox", "bolt", "bungeecord", "bungeecord-geyser",
-    "chestprotect", "clearlag", "dominion", "ecoenchants", "elitemobs", "griefprevention",
+    "chestprotect", "clearlag", "craftengine", "dominion", "ecoenchants", "elitemobs", "griefprevention",
     "husktowns", "itemsadder", "lands", "matcherplus", "openinv", "plotsquared", "reforges",
     "residence", "simpleclaimsystem", "slimefun", "superiorskyblock", "towny",
-    "ultimateclaims", "velocity", "voidchest", "worldguard",
+    "ultimateclaims", "velocity", "worldguard",
 ).forEach {
     include("compatibility:$it")
     project(":compatibility:$it").projectDir = file("compatibility/$it")

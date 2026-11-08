@@ -22,7 +22,6 @@ import com.ghostchu.quickshop.api.shop.Info;
 import com.ghostchu.quickshop.api.shop.PriceLimiter;
 import com.ghostchu.quickshop.api.shop.PriceLimiterCheckResult;
 import com.ghostchu.quickshop.api.shop.Shop;
-import com.ghostchu.quickshop.api.shop.ShopChunk;
 import com.ghostchu.quickshop.api.shop.ShopManager;
 import com.ghostchu.quickshop.api.shop.cache.ShopCacheNamespacedKey;
 import com.ghostchu.quickshop.api.shop.permission.BuiltInShopPermission;
@@ -89,13 +88,14 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -155,6 +155,7 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
   private boolean useShopableChecks;
   private boolean useShopCache;
   private IShopLayoutProvider shopLayoutProvider;
+  private DateTimeFormatter dateTimeFormatter;
 
   //Initialize our shop types
   public static final BuyingType BUYING_TYPE = new BuyingType();
@@ -232,6 +233,14 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
     this.useShopCache = plugin.getConfig().getBoolean("shop.use-cache", true);
     this.infoRateLimit = new ExpiringSet<>(Math.max(0L, plugin.getConfig().getLong("shop.info-panel.click-cooldown", 1000L)), TimeUnit.MILLISECONDS);
 
+    final String pattern = plugin.getConfig().getString("shop.message_date_time_formatter", "yyyy-MM-dd HH:mm");
+    try {
+      this.dateTimeFormatter = DateTimeFormatter.ofPattern(pattern);
+      this.dateTimeFormatter.format(LocalDateTime.now()); // Test it out
+    } catch (Throwable throwable) {
+      this.dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+      plugin.logger().warn("Invalid date time pattern configured '{}'", pattern);
+    }
   }
 
   /**
@@ -484,7 +493,8 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
 
     Util.asyncThreadRun(()->{
       final List<Function<String, Component>> sendList = new ArrayList<>();
-      final Function<String, Component> notify = langCode->plugin.platform().setItemStackHoverEvent(plugin.text().of("player-sold-to-your-store", buyerQUser.getDisplay(), amount, Util.getItemStackName(shop.getItem()), format(total, shop)).forLocale(langCode), shop.getItem());
+      final String date = dateTimeFormatter.format(LocalDateTime.now());
+      final Function<String, Component> notify = langCode->plugin.platform().setItemStackHoverEvent(plugin.text().of("player-sold-to-your-store", buyerQUser.getDisplay(), amount, Util.getItemStackName(shop.getItem()), format(total, shop), date).forLocale(langCode), shop.getItem());
       sendList.add(notify);
       if(space == amount) {
         Function<String, Component> spaceWarn;
@@ -741,6 +751,7 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
     this.interactiveManager.reset();
     this.shops.clear();
     shopCache.invalidateAll(null);
+    this.allShops.clear();
   }
 
   /**
@@ -1256,13 +1267,14 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
 
     Util.asyncThreadRun(()->{
       final List<Function<String, Component>> sendList = new ArrayList<>();
+      final String date = dateTimeFormatter.format(LocalDateTime.now());
       Function<String, Component> notify;
       final double ownerPayment = transaction.ownerPayment().doubleValue();
       final double tax = transaction.toTax().doubleValue();
       if(showTax) {
-        notify = langCode->plugin.text().of("player-bought-from-your-store-tax", seller, amount * shop.getItem().getAmount(), Util.getItemStackName(shop.getItem()), this.formatter.format(ownerPayment, shop), this.formatter.format(tax, shop)).forLocale(langCode);
+        notify = langCode->plugin.text().of("player-bought-from-your-store-tax", seller, amount * shop.getItem().getAmount(), Util.getItemStackName(shop.getItem()), this.formatter.format(ownerPayment, shop), this.formatter.format(tax, shop), date).forLocale(langCode);
       } else {
-        notify = langCode->plugin.text().of("player-bought-from-your-store", seller, amount * shop.getItem().getAmount(), Util.getItemStackName(shop.getItem()), this.formatter.format(ownerPayment, shop)).forLocale(langCode);
+        notify = langCode->plugin.text().of("player-bought-from-your-store", seller, amount * shop.getItem().getAmount(), Util.getItemStackName(shop.getItem()), this.formatter.format(ownerPayment, shop), date).forLocale(langCode);
       }
       final Function<String, Component> finalNotify = notify;
       notify = langCode->plugin.platform().setItemStackHoverEvent(finalNotify.apply(langCode), shop.getItem());
@@ -1391,13 +1403,13 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
    * Returns a new shop iterator object, allowing iteration over shops easily, instead of sorting
    * through a 3D map.
    *
-   * @return a new shop iterator object.
+   * @return a new shop iterator object, removal is not supported.
    */
   @Override
   @NotNull
   public Iterator<Shop> getShopIterator() {
 
-    return new SimpleShopManager.ShopIterator();
+    return getAllShops().iterator();
   }
 
   @Override
@@ -1668,64 +1680,6 @@ public class SimpleShopManager extends AbstractShopManager implements ShopManage
           plugin.getBungeeListener().notifyForForward(p);
         }
       }
-    }
-  }
-
-  public class ShopIterator implements Iterator<Shop> {
-
-    protected final Iterator<Map<ShopChunk, Map<Location, Shop>>> worlds;
-
-    protected Iterator<Map<Location, Shop>> chunks;
-
-    protected Iterator<Shop> shops;
-
-    public ShopIterator() {
-
-      worlds = getShops().values().iterator();
-    }
-
-    /**
-     * Returns true if there is still more shops to iterate over.
-     */
-    @Override
-    public boolean hasNext() {
-
-      if(shops == null || !shops.hasNext()) {
-        if(chunks == null || !chunks.hasNext()) {
-          if(!worlds.hasNext()) {
-            return false;
-          } else {
-            chunks = worlds.next().values().iterator();
-            return hasNext();
-          }
-        } else {
-          shops = chunks.next().values().iterator();
-          return hasNext();
-        }
-      }
-      return true;
-    }
-
-    /**
-     * Fetches the next shop. Throws NoSuchElementException if there are no more shops.
-     */
-    @Override
-    @NotNull
-    public Shop next() {
-
-      if(shops == null || !shops.hasNext()) {
-        if(chunks == null || !chunks.hasNext()) {
-          if(!worlds.hasNext()) {
-            throw new NoSuchElementException("No more shops to iterate over!");
-          }
-          chunks = worlds.next().values().iterator();
-        }
-        shops = chunks.next().values().iterator();
-      }
-      if(!shops.hasNext()) {
-        return this.next(); // Skip to the next one (Empty iterator?)
-      }
-      return shops.next();
     }
   }
 

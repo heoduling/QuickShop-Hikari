@@ -2,6 +2,12 @@ plugins {
     id("quickshop.compat-conventions")
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
+}
+
 dependencies {
     compileOnly(libs.paper.api)
     implementation(project(":compatibility:common"))
@@ -12,7 +18,8 @@ dependencies {
         exclude("dev.triumphteam", "triumph-cmd-bukkit")
         exclude("CrazyCrates", "crazycrates-core")
     }
-    implementation("de.dustplanet:silkspawners:8.3.0") { isTransitive = false }
+    compileOnly("su.nightexpress.excellentcrates:crates-api:7.1.0")
+    compileOnly("de.dustplanet:silkspawners:8.3.0") { isTransitive = false }
     compileOnly("io.th0rgal:oraxen:1.189.0") {
         exclude("me.gabytm.util", "actions-spigot")
         exclude("org.jetbrains", "annotations")
@@ -26,7 +33,8 @@ dependencies {
         exclude("com.jeff_media", "MorePersistentDataTypes")
         exclude("gs.mclo", "java")
     }
-    implementation("com.github.Slimefun:Slimefun4:RC-37")
+    compileOnly("xyz.spaceio:SafariNet:1.15.37-SNAPSHOT")
+    compileOnly("com.github.Slimefun:Slimefun4:RC-37")
     compileOnly("xyz.xenondevs.nova:nova-api:0.18")
 }
 

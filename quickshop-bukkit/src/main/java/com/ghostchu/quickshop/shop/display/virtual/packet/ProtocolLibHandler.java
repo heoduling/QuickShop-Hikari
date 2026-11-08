@@ -19,11 +19,16 @@ package com.ghostchu.quickshop.shop.display.virtual.packet;
 
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
+import com.comphenix.protocol.events.PacketContainer;
+import com.comphenix.protocol.wrappers.ChunkCoordIntPair;
+import com.ghostchu.quickshop.QuickShop;
 import com.ghostchu.quickshop.api.shop.display.PacketFactory;
 import com.ghostchu.quickshop.api.shop.display.PacketHandler;
 import com.ghostchu.quickshop.shop.display.virtual.packet.protocollib.PacketFactoryv1_20;
 import com.ghostchu.quickshop.shop.display.virtual.packet.protocollib.PacketFactoryv1_21;
 import com.ghostchu.quickshop.shop.display.virtual.packet.protocollib.PacketFactoryv1_21_10;
+import com.ghostchu.quickshop.shop.display.virtual.packet.protocollib.PacketFactoryv26_3;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -48,6 +53,25 @@ public class ProtocolLibHandler implements PacketHandler<ProtocolManager> {
   public static ProtocolLibHandler instance() {
 
     return instance;
+  }
+
+  /**
+   * Reads the chunk position of a chunk packet (MAP_CHUNK / UNLOAD_CHUNK).
+   *
+   * <p>1.21.10 and 1.21.11 store it as a {@code ChunkPos} field, while the 26.x releases store it
+   * as two plain integers again. Reading the wrong layout throws a {@code FieldAccessException}
+   * for every chunk packet, so the layout is picked from the running server version.</p>
+   *
+   * @param packet the chunk packet
+   *
+   * @return the chunk position
+   */
+  public static ChunkCoordIntPair readChunkCoordinates(@NotNull final PacketContainer packet) {
+
+    if(Integer.parseInt(QuickShop.getInstance().platform().getMinecraftVersion().split("\\.")[0]) >= 26) {
+      return new ChunkCoordIntPair(packet.getIntegers().read(0), packet.getIntegers().read(1));
+    }
+    return packet.getChunkCoordIntPairs().read(0);
   }
 
   /**
@@ -114,6 +138,12 @@ public class ProtocolLibHandler implements PacketHandler<ProtocolManager> {
     final PacketFactoryv1_21_10 oneTwentyOneTen = new PacketFactoryv1_21_10();
     factories.put("1.21.10", oneTwentyOneTen);
     factories.put("1.21.11", oneTwentyOneTen);
+    factories.put("26.1", oneTwentyOneTen);
+    factories.put("26.2", oneTwentyOneTen);
+
+
+    final PacketFactoryv26_3 twentySixThree = new PacketFactoryv26_3();
+    factories.put("26.3", twentySixThree);
   }
 
   @Override

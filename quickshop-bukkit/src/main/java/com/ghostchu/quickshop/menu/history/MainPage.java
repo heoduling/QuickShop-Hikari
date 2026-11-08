@@ -107,6 +107,10 @@ public class MainPage {
       final Player player = Bukkit.getPlayer(viewer.get().uuid());
       if(shopsData.isPresent() && historyData.isPresent() && summaryData.isPresent() && player != null) {
 
+        if(((List<Shop>)shopsData.get()).isEmpty()) {
+          return;
+        }
+
         final ProxiedLocale locale = QuickShop.getInstance().getTextManager().findRelativeLanguages(player);
 
         callback.getPage().getIcons().clear();

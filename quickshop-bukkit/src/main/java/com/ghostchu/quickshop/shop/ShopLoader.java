@@ -100,14 +100,17 @@ public class ShopLoader implements SubPasteItem {
     final AtomicInteger successCounter = new AtomicInteger(0);
     final AtomicInteger chunkNotLoaded = new AtomicInteger(0);
     final List<Shop> shopsLoadInNextTick = new CopyOnWriteArrayList<>();
-    for(final ShopRecord record : records) {
-      loadShopFromShopRecord(worldName, record, deleteCorruptShops,
-                             shopsLoadInNextTick, successCounter, chunkNotLoaded)
+    final CompletableFuture<?>[] futures = new CompletableFuture<?>[records.size()];
+    for(int i = 0; i < records.size(); i++) {
+      final ShopRecord record = records.get(i);
+      futures[i] = loadShopFromShopRecord(worldName, record, deleteCorruptShops,
+                                          shopsLoadInNextTick, successCounter, chunkNotLoaded)
               .exceptionally(e->{
                 plugin.logger().warn("Failed to load shop {}", record, e);
                 return null;
-              }).join();
+              });
     }
+    CompletableFuture.allOf(futures).join();
     Util.mainThreadRun(()->shopsLoadInNextTick.forEach(shop->{
       try {
         plugin.getShopManager().loadShop(shop);
@@ -341,10 +344,7 @@ public class ShopLoader implements SubPasteItem {
       //handle old shops
       this.currency = dataRecord.getCurrency();
       this.hologram = dataRecord.isHologram();
-      this.taxAccount = null;
-      if(dataRecord.getTaxAccount() != null) {
-        this.taxAccount = getTaxAccount();
-      }
+      this.taxAccount = dataRecord.getTaxAccount();
       this.invSymbolLink = dataRecord.getInventorySymbolLink();
       this.invWrapper = dataRecord.getInventoryWrapper();
       this.benefits = QSBenefitProvider.deserialize(dataRecord.getBenefit());

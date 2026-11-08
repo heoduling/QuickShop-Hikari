@@ -23,7 +23,6 @@ import com.comphenix.protocol.events.ListenerPriority;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.reflect.StructureModifier;
 import com.comphenix.protocol.utility.MinecraftReflection;
 import com.comphenix.protocol.wrappers.ChunkCoordIntPair;
 import com.comphenix.protocol.wrappers.WrappedChatComponent;
@@ -261,7 +260,7 @@ public class PacketFactoryv1_21_10 implements PacketFactory<PacketContainer> {
   @Override
   public void registerSendChunk() {
 
-    this.chunkSendingPacketAdapter = new PacketAdapter(QuickShop.getInstance().getJavaPlugin(), ListenerPriority.HIGH, PacketType.Play.Server.UNLOAD_CHUNK) {
+    this.chunkSendingPacketAdapter = new PacketAdapter(QuickShop.getInstance().getJavaPlugin(), ListenerPriority.HIGH, PacketType.Play.Server.MAP_CHUNK) {
 
       @Override
       public void onPacketSending(@NotNull final PacketEvent event) {
@@ -274,11 +273,13 @@ public class PacketFactoryv1_21_10 implements PacketFactory<PacketContainer> {
           return;
         }
 
+        final ChunkCoordIntPair pair = ProtocolLibHandler.readChunkCoordinates(event.getPacket());
+        //chunk x
+        final int x = pair.getChunkX();
+        //chunk z
+        final int z = pair.getChunkZ();
 
-        final StructureModifier<ChunkCoordIntPair> chunkCoord = event.getPacket().getChunkCoordIntPairs();
-        final ChunkCoordIntPair pair = chunkCoord.read(0);
-
-        VirtualDisplayItemManager.instance().chunksMapping().computeIfPresent(new SimpleShopChunk(player.getWorld().getName(), pair.getChunkX(), pair.getChunkZ()), (chunkLoc, targetList)->{
+        VirtualDisplayItemManager.instance().chunksMapping().computeIfPresent(new SimpleShopChunk(player.getWorld().getName(), x, z), (chunkLoc, targetList)->{
           for(final VirtualDisplayItem<?> target : targetList.values()) {
             if(!target.isSpawned()) {
               continue;
@@ -326,8 +327,7 @@ public class PacketFactoryv1_21_10 implements PacketFactory<PacketContainer> {
         if(player.getClass().getName().contains("TemporaryPlayer")) {
           return;
         }
-        final StructureModifier<ChunkCoordIntPair> intPairStructureModifier = event.getPacket().getChunkCoordIntPairs();
-        final ChunkCoordIntPair pair = intPairStructureModifier.read(0);
+        final ChunkCoordIntPair pair = ProtocolLibHandler.readChunkCoordinates(event.getPacket());
         //chunk x
         final int x = pair.getChunkX();
         //chunk z

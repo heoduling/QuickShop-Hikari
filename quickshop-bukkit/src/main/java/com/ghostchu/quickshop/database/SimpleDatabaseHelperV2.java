@@ -36,6 +36,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -57,7 +60,7 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
   @NotNull
   private final String prefix;
 
-  private final int LATEST_DATABASE_VERSION = 20;
+  private final int LATEST_DATABASE_VERSION = 21;
 
   public SimpleDatabaseHelperV2(@NotNull final QuickShop plugin, @NotNull final SQLManager manager, @NotNull final String prefix) throws Exception {
 
@@ -343,6 +346,7 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
     return queryDataId(simpleDataRecord).thenCompose(id->{
       if(id == null) {
         final Map<String, Object> map = simpleDataRecord.generateParams();
+        map.put("create_time", LocalDateTime.ofInstant(simpleDataRecord.getCreateTime().toInstant(), ZoneId.systemDefault()));
         return DataTables.DATA.createInsert()
                 .setColumnNames(new ArrayList<>(map.keySet()))
                 .setParams(map.values())
@@ -472,23 +476,29 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
   public @NotNull CompletableFuture<@NotNull Integer> insertHistoryRecord(@NotNull final Object rec) {
 
     return DataTables.LOG_OTHERS.createInsert()
-            .setColumnNames("type", "data")
-            .setParams(rec.getClass().getName(), JsonUtil.getGson().toJson(rec))
+            .setColumnNames("time", "type", "data")
+            .setParams(LocalDateTime.now(ZoneId.systemDefault()), rec.getClass().getName(), JsonUtil.getGson().toJson(rec))
             .executeFuture(lines->lines);
   }
 
   @Override
   public @NotNull CompletableFuture<@NotNull Integer> insertMetricRecord(@NotNull final ShopMetricRecord metricRecord) {
 
+    if(!plugin.getConfig().getBoolean("transaction-metric.enable", true)) {
+      Log.debug("Transaction metric recording is disabled, skipping the metrics record insert.");
+      return CompletableFuture.completedFuture(0);
+    }
+
     final CompletableFuture<Integer> future = new CompletableFuture<>();
     plugin.getDatabaseHelper().locateShopDataId(metricRecord.getShopId()).whenCompleteAsync((dataId, err)->{
       if(err != null) {
         future.completeExceptionally(err);
+        return;
       }
       DataTables.LOG_PURCHASE
               .createInsert()
               .setColumnNames("time", "shop", "data", "buyer", "type", "amount", "money", "tax")
-              .setParams(new Date(metricRecord.getTime()), metricRecord.getShopId()
+              .setParams(LocalDateTime.ofInstant(Instant.ofEpochMilli(metricRecord.getTime()), ZoneId.systemDefault()), metricRecord.getShopId()
                       , dataId, metricRecord.getPlayer(), metricRecord.getType().name(),
                          metricRecord.getAmount(), metricRecord.getTotal(), metricRecord.getTax())
               .executeFuture(lines->lines).whenComplete((line, err2)->{
@@ -505,6 +515,11 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
   @Override
   public void insertTransactionRecord(@Nullable UUID from, @Nullable UUID to, final double amount, @Nullable final String currency, final double taxAmount, @Nullable final UUID taxAccount, @Nullable final String error) {
 
+    if(!plugin.getConfig().getBoolean("transaction-metric.enable", true)) {
+      Log.debug("Transaction metric recording is disabled, skipping the transaction record insert.");
+      return;
+    }
+
     if(from == null) {
       from = CommonUtil.getNilUniqueId();
     }
@@ -512,8 +527,8 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
       to = CommonUtil.getNilUniqueId();
     }
     DataTables.LOG_TRANSACTION.createInsert()
-            .setColumnNames("from", "to", "currency", "amount", "tax_amount", "tax_account", "error")
-            .setParams(from.toString(), to.toString(), currency, amount, taxAmount, taxAccount == null? null : taxAccount.toString(), error)
+            .setColumnNames("time", "from", "to", "currency", "amount", "tax_amount", "tax_account", "error")
+            .setParams(LocalDateTime.now(ZoneId.systemDefault()), from.toString(), to.toString(), currency, amount, taxAmount, taxAccount == null? null : taxAccount.toString(), error)
             .executeAsync(handler->Log.debug("Operation completed, insertTransactionRecord, " + handler + " lines affected"));
   }
 
@@ -527,20 +542,23 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
   public @NotNull List<ShopRecord> listShops(@Nullable final String worldFilter, final boolean deleteIfCorrupt) {
 
     final List<ShopRecord> shopRecords = new ArrayList<>();
-    final String SQL = "SELECT * FROM " + DataTables.DATA.getName()
-                       + " INNER JOIN " + DataTables.SHOPS.getName()
-                       + " ON " + DataTables.DATA.getName() + ".id = " + DataTables.SHOPS.getName() + ".data"
-                       + " INNER JOIN " + DataTables.SHOP_MAP.getName()
-                       + " ON " + DataTables.SHOP_MAP.getName() + ".shop = " + DataTables.SHOPS.getName() + ".id"
-                       + " LEFT JOIN " + DataTables.EXTERNAL_CACHE.getName()
-                       + " ON " + DataTables.EXTERNAL_CACHE.getName() + ".shop = " + DataTables.SHOPS.getName() + ".id";
-    try(final SQLQuery query = manager.createQuery().withPreparedSQL(SQL).execute()) {
+    final StringBuilder sqlBuilder = new StringBuilder("SELECT * FROM ")
+            .append(DataTables.DATA.getName())
+            .append(" INNER JOIN ").append(DataTables.SHOPS.getName())
+            .append(" ON ").append(DataTables.DATA.getName()).append(".id = ").append(DataTables.SHOPS.getName()).append(".data")
+            .append(" INNER JOIN ").append(DataTables.SHOP_MAP.getName())
+            .append(" ON ").append(DataTables.SHOP_MAP.getName()).append(".shop = ").append(DataTables.SHOPS.getName()).append(".id")
+            .append(" LEFT JOIN ").append(DataTables.EXTERNAL_CACHE.getName())
+            .append(" ON ").append(DataTables.EXTERNAL_CACHE.getName()).append(".shop = ").append(DataTables.SHOPS.getName()).append(".id");
+    final List<Object> params = new ArrayList<>();
+    if(worldFilter != null) {
+      sqlBuilder.append(" WHERE ").append(DataTables.SHOP_MAP.getName()).append(".world = ?");
+      params.add(worldFilter);
+    }
+    try(final SQLQuery query = manager.createQuery().withPreparedSQL(sqlBuilder.toString()).setParams(params).execute()) {
       final ResultSet rs = query.getResultSet();
       while(rs.next()) {
         final String world = rs.getString("world");
-        if(worldFilter != null && !worldFilter.equals(world)) {
-          continue;
-        }
         final long shopId = rs.getLong("shop");
         final int x = rs.getInt("x");
         final int y = rs.getInt("y");
@@ -770,7 +788,7 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
 
     return DataTables.MESSAGES.createInsert()
             .setColumnNames("receiver", "time", "content")
-            .setParams(player.toString(), new Date(time), message)
+            .setParams(player.toString(), LocalDateTime.ofInstant(Instant.ofEpochMilli(time), ZoneId.systemDefault()), message)
             .executeFuture(lines->lines);
   }
 
@@ -1054,6 +1072,20 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
     }
   }
 
+  private void performShopTableIndexes() {
+
+    try {
+      getManager().alterTable(DataTables.SHOPS.getName())
+              .addIndex(IndexType.INDEX, "idx_qs_shops_data", "data")
+              .execute();
+      getManager().alterTable(DataTables.SHOP_MAP.getName())
+              .addIndex(IndexType.INDEX, "idx_qs_shop_map_shop", "shop")
+              .execute();
+    } catch(final SQLException e) {
+      plugin.logger().warn("Cannot setup the shop table indexes", e);
+    }
+  }
+
   static class DatabaseUpgrade {
 
     private final SimpleDatabaseHelperV2 parent;
@@ -1143,6 +1175,12 @@ public class SimpleDatabaseHelperV2 implements DatabaseHelper {
         logger.info("Data upgrading: Creating a new column... shop_state for the new shop states system.");
         parent.addStateColumn();
         currentDatabaseVersion = 20;
+      }
+
+      if(currentDatabaseVersion == 20) {
+        logger.info("Data upgrading: Creating indexes for the shop tables to improve performance...");
+        parent.performShopTableIndexes();
+        currentDatabaseVersion = 21;
       }
 
       parent.setDatabaseVersion(currentDatabaseVersion).join();

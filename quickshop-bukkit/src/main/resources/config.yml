@@ -11,7 +11,7 @@
 
 # Internal configuration version.
 # Do not change this unless QuickShop support instructs you to.
-config-version: 1048
+config-version: 1050
 
 # Default language used by the plugin.
 # Set to "default" to use the player's Minecraft client language automatically.
@@ -419,6 +419,9 @@ shop:
   # Disable the ability to transfer buy shops using the transfer and transferall commands.
   disable-buy-transfer: false
 
+  # Should permissions be cleared on a shop when a player transfers it?
+  remove-perms-on-transfer: true
+
   # Allow shop owners to break only the sign (so it can be replaced).
   # WARNING: May cause sign duplication if auto-sign is enabled.
   allow-owner-break-shop-sign: false
@@ -473,7 +476,7 @@ shop:
   # Preferred protocol implementation for virtual displays:
   # - protocollib
   # - packetevents
-  display-protocol: 'protocollib'
+  display-protocol: 'packetevents'
 
   # Automatically despawn display items when no players are nearby.
   display-auto-despawn: false
@@ -793,6 +796,12 @@ shop:
     # Set to 0 to disable.
     click-cooldown: 100
 
+  # The datetime format to use when notifying shop owners or staff about sales in their shop
+  # Note that the timezone used is the server's, not the player's
+  # Supported fields: year (yyyy), month (MM or MMM), day (dd), hour (HH), minute (mm), and seconds (ss)
+  # Default: yyyy-MM-dd HH:mm
+  message_date_time_formatter: "yyyy-MM-dd HH:mm"
+
 # Item Blacklist
 # Items that cannot be sold in shops.
 # Permission quickshop.bypass.<itemID> bypasses the restriction.
@@ -912,6 +921,9 @@ matcher:
 
     # Compare potion duration scaling.
     POTION_DURATION_SCALE: true
+
+    # Compare ominous bottle level.
+    OMINOUS_BOTTLE_AMPLIFIER: true
 
     # ------------------------------
     # GROUP COMPONENT TOGGLES

@@ -107,7 +107,8 @@ public class QSEconomyTransaction implements EconomyTransaction {
 
     this.fromTax = CalculateUtil.subtract(fromAmount, amount);
 
-    this.totalTax = toTax.add(fromTax);
+    //The total tax is the sum of both tax AMOUNTS, not the tax rates (toTax/fromTax parameters)
+    this.totalTax = this.toTax.add(this.fromTax);
 
     if(from == null && to == null) {
       lastError = "From and To cannot be null in same time.";
@@ -379,7 +380,8 @@ public class QSEconomyTransaction implements EconomyTransaction {
   }
 
   /**
-   * Commits the current transaction with the provided callback, finalizing all operations made.
+   * Commits the current transaction with the provided callback, finalizing all operations made, and
+   * records the transaction result into the transaction log table.
    *
    * @param callback the callback to be executed during the commit process
    *
@@ -387,6 +389,20 @@ public class QSEconomyTransaction implements EconomyTransaction {
    */
   @Override
   public boolean commit(@NotNull final TransactionCallback callback) {
+
+    final boolean success = this.processCommit(callback);
+    this.recordTransactionRecord(success);
+    return success;
+  }
+
+  /**
+   * Executes all operations of this transaction and finalize it.
+   *
+   * @param callback the callback to be executed during the commit process
+   *
+   * @return true if the commit operation is successful, false otherwise
+   */
+  private boolean processCommit(@NotNull final TransactionCallback callback) {
 
     Log.transaction("Transaction begin: Regular Commit --> " + from + " => " + to + "; Amount: " + amount + " FromAmount: " + fromAmount + " Total(after tax): " + amountAfterTax + " From Tax: " + fromTax + " To Tax: " + toTax + ", EconomyCore: " + provider.name());
 
@@ -459,9 +475,34 @@ public class QSEconomyTransaction implements EconomyTransaction {
     return true;
   }
 
+  /**
+   * Inserts an audit record of this transaction into the log_transaction table.
+   * <p>
+   * Both successful and failed transactions are recorded; the error column keeps the failure reason
+   * and stays NULL when the transaction succeeded. This is a fire-and-forget operation, a failure of
+   * it will never affect the transaction result itself.
+   *
+   * @param success whether this transaction has been committed successfully
+   */
+  private void recordTransactionRecord(final boolean success) {
+
+    try {
+      QuickShop.getInstance().getDatabaseHelper().insertTransactionRecord(
+              from == null? null : from.getUniqueId(),
+              to == null? null : to.getUniqueId(),
+              amount.doubleValue(),
+              currency,
+              totalTax.doubleValue(),
+              taxer == null? null : taxer.getUniqueId(),
+              success? null : lastError);
+    } catch(final Throwable throwable) {
+      Log.transaction(Level.WARNING, "Failed to insert the transaction record, transaction: " + this + ", error: " + throwable.getMessage());
+    }
+  }
+
   private void checkTax(@NotNull final TransactionCallback callback) {
 
-    if(totalTax.compareTo(BigDecimal.ZERO) > 0) {
+    if(totalTax.compareTo(BigDecimal.ZERO) <= 0) {
       return;
     }
 

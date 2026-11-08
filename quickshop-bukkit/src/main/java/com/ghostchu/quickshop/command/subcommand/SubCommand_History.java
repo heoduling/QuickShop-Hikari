@@ -74,6 +74,10 @@ public class SubCommand_History implements CommandHandler<Player> {
       }
     }
 
+    if(shops.isEmpty()) {
+      plugin.text().of(sender, "metric.no-results").send();
+      return;
+    }
     ShopHistoryGui.open(sender, shops);
   }
 
