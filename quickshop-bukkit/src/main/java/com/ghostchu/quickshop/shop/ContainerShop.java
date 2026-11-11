@@ -131,7 +131,7 @@ public class ContainerShop implements Shop<Double, Location>, Reloadable {
   private ItemStack item;
   private String itemSerialize;
   @Nullable
-  private AbstractDisplayItem displayItem = null;
+  private volatile AbstractDisplayItem displayItem = null;
   private volatile boolean isLoaded = false;
   private volatile boolean createBackup = false;
   private boolean dirty;

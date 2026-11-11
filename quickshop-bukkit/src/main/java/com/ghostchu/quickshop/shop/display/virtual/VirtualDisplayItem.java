@@ -34,18 +34,18 @@ import com.ghostchu.quickshop.util.Util;
 import com.ghostchu.quickshop.util.logger.Log;
 import com.ghostchu.simplereloadlib.Reloadable;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reloadable {
 
@@ -69,7 +69,8 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
   private ShopChunk chunkLocation;
 
   //If packet initialized
-  private boolean isSpawned = false;
+  private volatile boolean isSpawned = false;
+  private final AtomicLong recipientGeneration = new AtomicLong();
   //packets
 
   VirtualDisplayItem(final VirtualDisplayItemManager manager, final PacketFactory<T> packetFactory, final Shop shop) {
@@ -177,6 +178,7 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
   @Override
   public void remove(final boolean dontTouchWorld) {
 
+    final long currentGeneration = recipientGeneration.incrementAndGet();
     final Iterator<UUID> iterator = packetSenders.iterator();
     while(iterator.hasNext()) {
 
@@ -186,7 +188,11 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
         iterator.remove();
       } else {
 
-        sendDestroyPacket(nextPlayer);
+        onPlayerOwner(nextPlayer, ()->{
+          if(recipientGeneration.get() == currentGeneration) {
+            sendDestroyPacket(nextPlayer);
+          }
+        });
       }
     }
 
@@ -237,8 +243,11 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
         } catch (NullPointerException ignored) {
         }*/
 
-    sendFakeItemToAll();
     isSpawned = true;
+    final long currentGeneration = recipientGeneration.incrementAndGet();
+    for(final Player player : Bukkit.getOnlinePlayers()) {
+      onPlayerOwner(player, ()->discoverRecipient(player, currentGeneration));
+    }
   }
 
 
@@ -250,21 +259,45 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
     //some time shop can be loaded when world isn't loaded
     chunkLocation = SimpleShopChunk.fromLocation(shop.bukkitLocation());
     manager.put(chunkLocation, entityID, this);
-    //Let nearby player can saw fake item
-    final List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
-    onlinePlayers.removeIf(p->!p.getWorld().equals(shop.bukkitLocation().getWorld()));
+  }
 
-    for(final Player onlinePlayer : onlinePlayers) {
+  private void discoverRecipient(final Player player, final long currentGeneration) {
 
-      final double distance = onlinePlayer.getLocation().distance(shop.bukkitLocation());
-      if(Math.abs(distance) > Bukkit.getViewDistance() * 16) {
-
-        continue;
+    if(!isSpawned || recipientGeneration.get() != currentGeneration || !player.isOnline()) {
+      return;
+    }
+    final Location location = shop.bukkitLocation();
+    if(player.getWorld() != location.getWorld()
+       || player.getLocation().distance(location) > Bukkit.getViewDistance() * 16
+       || !isApplicableForPlayer(player)) {
+      return;
+    }
+    final Runnable addRecipient = ()->{
+      if(!isSpawned || recipientGeneration.get() != currentGeneration || !shop.isLoaded()
+         || !Bukkit.isOwnedByCurrentRegion(shop.bukkitLocation())) {
+        return;
       }
-      if(isApplicableForPlayer(onlinePlayer)) { // TODO: Refactor with better way
-
-        packetSenders.add(onlinePlayer.getUniqueId());
+      if(packetSenders.add(player.getUniqueId())) {
+        onPlayerOwner(player, ()->{
+          if(isSpawned && recipientGeneration.get() == currentGeneration && player.isOnline()) {
+            sendFakeItem(player);
+          }
+        });
       }
+    };
+    if(Bukkit.isOwnedByCurrentRegion(location)) {
+      addRecipient.run();
+    } else if(QuickShop.getInstance().getJavaPlugin().isEnabled()) {
+      Bukkit.getRegionScheduler().run(QuickShop.getInstance().getJavaPlugin(), location, task->addRecipient.run());
+    }
+  }
+
+  private void onPlayerOwner(final Player player, final Runnable action) {
+
+    if(Bukkit.isOwnedByCurrentRegion(player)) {
+      action.run();
+    } else if(QuickShop.getInstance().getJavaPlugin().isEnabled()) {
+      player.getScheduler().run(QuickShop.getInstance().getJavaPlugin(), task->action.run(), null);
     }
   }
 
