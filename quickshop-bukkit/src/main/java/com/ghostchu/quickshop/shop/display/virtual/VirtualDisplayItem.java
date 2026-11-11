@@ -178,7 +178,7 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
   @Override
   public void remove(final boolean dontTouchWorld) {
 
-    final long currentGeneration = recipientGeneration.incrementAndGet();
+    recipientGeneration.incrementAndGet();
     final Iterator<UUID> iterator = packetSenders.iterator();
     while(iterator.hasNext()) {
 
@@ -188,11 +188,7 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
         iterator.remove();
       } else {
 
-        onPlayerOwner(nextPlayer, ()->{
-          if(recipientGeneration.get() == currentGeneration) {
-            sendDestroyPacket(nextPlayer);
-          }
-        });
+        sendDestroyPacket(nextPlayer);
       }
     }
 
@@ -268,8 +264,7 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
     }
     final Location location = shop.bukkitLocation();
     if(player.getWorld() != location.getWorld()
-       || player.getLocation().distance(location) > Bukkit.getViewDistance() * 16
-       || !isApplicableForPlayer(player)) {
+       || player.getLocation().distance(location) > Bukkit.getViewDistance() * 16) {
       return;
     }
     final Runnable addRecipient = ()->{
@@ -279,8 +274,11 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
       }
       if(packetSenders.add(player.getUniqueId())) {
         onPlayerOwner(player, ()->{
-          if(isSpawned && recipientGeneration.get() == currentGeneration && player.isOnline()) {
+          if(isSpawned && recipientGeneration.get() == currentGeneration && player.isOnline()
+             && isApplicableForPlayer(player) && recipientGeneration.get() == currentGeneration) {
             sendFakeItem(player);
+          } else {
+            forgetRecipient(player.getUniqueId(), currentGeneration);
           }
         });
       }
@@ -297,6 +295,29 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
     if(Bukkit.isOwnedByCurrentRegion(player)) {
       action.run();
     } else if(QuickShop.getInstance().getJavaPlugin().isEnabled()) {
+      player.getScheduler().run(QuickShop.getInstance().getJavaPlugin(), task->action.run(), null);
+    }
+  }
+
+  private void forgetRecipient(final UUID player, final long currentGeneration) {
+
+    final Runnable remove = ()->{
+      if(recipientGeneration.get() == currentGeneration) {
+        packetSenders.remove(player);
+      }
+    };
+    final Location location = shop.bukkitLocation();
+    if(Bukkit.isOwnedByCurrentRegion(location)) {
+      remove.run();
+    } else if(QuickShop.getInstance().getJavaPlugin().isEnabled()) {
+      Bukkit.getRegionScheduler().run(QuickShop.getInstance().getJavaPlugin(), location, task->remove.run());
+    }
+  }
+
+  private void queuePlayerPacket(final Player player, final Runnable action) {
+
+    // Keep destroys and replacement spawns ordered even when a caller already owns the player.
+    if(QuickShop.getInstance().getJavaPlugin().isEnabled()) {
       player.getScheduler().run(QuickShop.getInstance().getJavaPlugin(), task->action.run(), null);
     }
   }
@@ -339,6 +360,11 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
 
   public void sendDestroyPacket(@NotNull final Player player) {
 
+    queuePlayerPacket(player, ()->sendDestroyPacketOwned(player));
+  }
+
+  private void sendDestroyPacketOwned(final Player player) {
+
     final PacketHandlerSendDestroyEvent<T> event = new PacketHandlerSendDestroyEvent<>(manager.packetHandler(),
                                                                                        this.packetFactory,
                                                                                        destroyPacket);
@@ -354,7 +380,24 @@ public class VirtualDisplayItem<T> extends AbstractDisplayItem implements Reload
 
   public void sendFakeItem(@NotNull final Player player) {
 
-    this.sendDestroyPacket(player);
+    final long currentGeneration = recipientGeneration.get();
+    queuePlayerPacket(player, ()->{
+      if(!isSpawned || recipientGeneration.get() != currentGeneration || !player.isOnline()) {
+        return;
+      }
+      final Location location = shop.bukkitLocation();
+      if(player.getWorld() != location.getWorld()
+         || player.getLocation().distance(location) > Bukkit.getViewDistance() * 16) {
+        forgetRecipient(player.getUniqueId(), currentGeneration);
+        return;
+      }
+      sendFakeItemOwned(player);
+    });
+  }
+
+  private void sendFakeItemOwned(final Player player) {
+
+    this.sendDestroyPacketOwned(player);
     this.sendSpawnPacket(player);
     this.sendMetaPacket(player);
 

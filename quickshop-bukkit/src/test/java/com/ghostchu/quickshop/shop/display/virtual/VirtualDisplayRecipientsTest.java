@@ -3,6 +3,7 @@ package com.ghostchu.quickshop.shop.display.virtual;
 import com.ghostchu.quickshop.QuickShop;
 import com.ghostchu.quickshop.api.QuickShopAPI;
 import com.ghostchu.quickshop.api.shop.Shop;
+import com.ghostchu.quickshop.api.shop.display.PacketFactory;
 import com.ghostchu.quickshop.shop.ContainerShop;
 import com.ghostchu.quickshop.shop.display.AbstractDisplayItem;
 import io.papermc.paper.threadedregions.scheduler.*;
@@ -79,12 +80,52 @@ class VirtualDisplayRecipientsTest {
     try(var f = new Fixture()) {
       f.display.spawn();
       f.capture();
-      doNothing().when(f.display).sendDestroyPacket(f.player);
       f.display.remove(false);
       f.display.spawn();
       f.capture();
       verify(f.display, times(2)).sendFakeItem(f.player);
-      verify(f.display, never()).sendDestroyPacket(f.player);
+      assertEquals("spawn", f.packets.get(f.packets.size() - 1));
+    }
+  }
+
+  @Test void repeatedRemovalStillDeliversThePendingDestroy() throws Exception {
+    try(var f = new Fixture()) {
+      f.display.spawn();
+      f.capture();
+      f.display.remove(false);
+      f.display.remove(false);
+      f.capture();
+      assertEquals(2, Collections.frequency(f.packets, "destroy"));
+    }
+  }
+
+  @Test void respawnDoesNotCancelCleanupForAFormerRecipientWhoMovedWorlds() throws Exception {
+    try(var f = new Fixture()) {
+      f.display.spawn();
+      f.capture();
+      f.display.remove(false);
+      f.display.spawn();
+      f.playerLocation = new Location(mock(World.class), 0, 64, 0);
+      f.capture();
+      assertEquals(2, Collections.frequency(f.packets, "destroy"));
+      verify(f.display, times(1)).sendSpawnPacket(f.player);
+    }
+  }
+
+  @Test void finalDeliveryRechecksWorldAfterTheShopOwnerCallback() throws Exception {
+    try(var f = new Fixture()) {
+      f.display.spawn();
+      f.shopOwner.set(false);
+      f.capture();
+      f.shopOwner.set(true);
+      f.regionCallbacks.remove(0).accept(null);
+      f.shopOwner.set(false);
+      f.playerLocation = new Location(mock(World.class), 0, 64, 0);
+      f.capture();
+      verify(f.display, never()).sendSpawnPacket(f.player);
+      f.shopOwner.set(true);
+      for(var callback : List.copyOf(f.regionCallbacks)) callback.accept(null);
+      assertTrue(f.senders.isEmpty());
     }
   }
 
@@ -99,7 +140,9 @@ class VirtualDisplayRecipientsTest {
     final List<Consumer<ScheduledTask>> callbacks = new ArrayList<>();
     final List<Consumer<ScheduledTask>> regionCallbacks = new ArrayList<>();
     final Set<UUID> senders = new ConcurrentSkipListSet<>();
+    final List<String> packets = new ArrayList<>();
     final VirtualDisplayItem<?> display;
+    Location playerLocation;
 
     Fixture() throws Exception {
       when(plugin.getJavaPlugin().getName()).thenReturn("QuickShop");
@@ -116,10 +159,12 @@ class VirtualDisplayRecipientsTest {
           .when(regionScheduler).run(any(), any(Location.class), any());
       bukkit.when(Bukkit::getPluginManager).thenReturn(mock(org.bukkit.plugin.PluginManager.class));
       when(world.getName()).thenReturn("world");
+      playerLocation = new Location(world, 0, 64, 0);
       when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+      bukkit.when(()->Bukkit.getPlayer(player.getUniqueId())).thenReturn(player);
       when(player.isOnline()).thenReturn(true);
-      when(player.getWorld()).thenAnswer(call->{ assertSame(player, owner.get());return world; });
-      when(player.getLocation()).thenAnswer(call->{ assertSame(player, owner.get());return new Location(world, 0, 64, 0); });
+      when(player.getWorld()).thenAnswer(call->{ assertSame(player, owner.get());return playerLocation.getWorld(); });
+      when(player.getLocation()).thenAnswer(call->{ assertSame(player, owner.get());return playerLocation.clone(); });
       EntityScheduler scheduler = mock(EntityScheduler.class);
       when(player.getScheduler()).thenReturn(scheduler);
       doAnswer(call->{callbacks.add(call.getArgument(1));return mock(ScheduledTask.class);})
@@ -135,7 +180,17 @@ class VirtualDisplayRecipientsTest {
       // Mockito skips constructors. Initialize the new lifecycle field when present.
       try { set(VirtualDisplayItem.class, "recipientGeneration", new AtomicLong()); }
       catch(NoSuchFieldException baseline) { }
-      doAnswer(call->{assertSame(player, owner.get());return null;}).when(display).sendFakeItem(player);
+      Object destroyPacket = new Object();
+      set(VirtualDisplayItem.class, "destroyPacket", destroyPacket);
+      PacketFactory factory = mock(PacketFactory.class);
+      set(VirtualDisplayItem.class, "packetFactory", factory);
+      doAnswer(call->{
+        assertSame(player, owner.get());
+        if(call.getArgument(1) == destroyPacket) packets.add("destroy");
+        return true;
+      }).when(factory).sendPacket(eq(player), any());
+      doAnswer(call->{assertSame(player, owner.get());packets.add("spawn");return null;}).when(display).sendSpawnPacket(player);
+      doNothing().when(display).sendMetaPacket(player);
     }
 
     void set(Class<?> type, String name, Object value) throws Exception {
@@ -145,9 +200,13 @@ class VirtualDisplayRecipientsTest {
     }
     void capture() {
       owner.set(player);
-      var ready = List.copyOf(callbacks);
-      callbacks.clear();
-      try { for(var callback : ready) callback.accept(null); }
+      try {
+        while(!callbacks.isEmpty()) {
+          var ready = List.copyOf(callbacks);
+          callbacks.clear();
+          for(var callback : ready) callback.accept(null);
+        }
+      }
       finally { owner.set(null); }
     }
     @Override public void close() { bukkit.close();quickshop.close(); }
