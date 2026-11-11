@@ -31,6 +31,7 @@ import com.github.retrooper.packetevents.event.PacketListener;
 import com.github.retrooper.packetevents.event.PacketListenerCommon;
 import com.github.retrooper.packetevents.event.PacketListenerPriority;
 import com.github.retrooper.packetevents.event.PacketSendEvent;
+import com.github.retrooper.packetevents.netty.buffer.ByteBufHelper;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
@@ -198,8 +199,6 @@ public class PacketFactoryv1_21 implements PacketFactory<PacketWrapper<?>> {
           return;
         }
 
-        final WrapperPlayServerChunkData chunkData = new WrapperPlayServerChunkData(event);
-
         final Player player = event.getPlayer();
         if(player == null || !player.isOnline()) {
 
@@ -211,8 +210,9 @@ public class PacketFactoryv1_21 implements PacketFactory<PacketWrapper<?>> {
           return;
         }
 
-        final int x = chunkData.getColumn().getX();
-        final int z = chunkData.getColumn().getZ();
+        final long coordinates = chunkCoordinates(event);
+        final int x = (int)(coordinates >> 32);
+        final int z = (int)coordinates;
 
         final List<VirtualDisplayItem<?>> items = new ArrayList<>();
         VirtualDisplayItemManager.instance().chunksMapping().computeIfPresent(new SimpleShopChunk(player.getWorld().getName(), x, z), (chunkLoc, targetList)->{
@@ -239,6 +239,25 @@ public class PacketFactoryv1_21 implements PacketFactory<PacketWrapper<?>> {
     };
 
     PacketEventsHandler.instance().internal().getEventManager().registerListener(sendChunk, PacketListenerPriority.NORMAL);
+  }
+
+  static long chunkCoordinates(final PacketSendEvent event) {
+
+    // Earlier listeners may have changed the cached Column before re-encoding.
+    if(event.getLastUsedWrapper() instanceof final WrapperPlayServerChunkData cached) {
+      return ((long)cached.getColumn().getX() << 32) | (cached.getColumn().getZ() & 0xffffffffL);
+    }
+    final Object buffer = event.getByteBuf();
+    final int index = ByteBufHelper.readerIndex(buffer);
+    return ((long)peekInt(buffer, index) << 32) | (peekInt(buffer, index + 4) & 0xffffffffL);
+  }
+
+  private static int peekInt(final Object buffer, final int index) {
+
+    return (ByteBufHelper.getUnsignedByte(buffer, index) << 24)
+           | (ByteBufHelper.getUnsignedByte(buffer, index + 1) << 16)
+           | (ByteBufHelper.getUnsignedByte(buffer, index + 2) << 8)
+           | ByteBufHelper.getUnsignedByte(buffer, index + 3);
   }
 
   /**

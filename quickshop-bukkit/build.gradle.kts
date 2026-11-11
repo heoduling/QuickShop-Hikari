@@ -9,6 +9,7 @@ plugins {
 
 dependencies {
     testImplementation(libs.paper.api.pinned)
+    testImplementation(libs.packet.events.spigot)
     testImplementation("org.mockito:mockito-core:5.23.0")
     testRuntimeOnly(libs.placeholder.api) {
         isTransitive = false
