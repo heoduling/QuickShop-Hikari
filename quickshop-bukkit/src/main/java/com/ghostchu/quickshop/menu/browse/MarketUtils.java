@@ -24,7 +24,6 @@ import com.ghostchu.quickshop.common.util.CommonUtil;
 import com.ghostchu.quickshop.shop.ContainerShop;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,6 +46,14 @@ public final class MarketUtils {
 
   private MarketUtils() {
     // Utility class
+  }
+
+  static Material getItemMaterial(final Shop shop) {
+
+    if(shop.getClass() == ContainerShop.class) {
+      return ((ContainerShop)shop).getMaterial();
+    }
+    return shop.getItem().getType();
   }
 
   /**

@@ -10,7 +10,7 @@
 
 ## Tasks
 
-- [ ] 1. Add material lookup regressions for ContainerShop, subclass and generic Shop. Observe RED. Implement exact-class fast path in MarketUtils and use it from GroupedItemPage. Observe GREEN and commit.
+- [x] 1. Add material lookup regressions for ContainerShop, subclass and generic Shop. Observe RED. Implement exact-class fast path in MarketUtils and use it from GroupedItemPage. Observe GREEN and commit.
 - [ ] 2. Add grouping context regressions for null IDs, fresh event clones, early acceptance, per-call cache lifetime and exact-matcher fallback. Observe RED. Add a grouping comparison factory to BukkitItemMatcherImpl and select it only in MarketUtils. Observe GREEN, bump version and commit.
 - [ ] 3. Adapt the audit probe to compare the original -2 algorithms against actual integrated -3 entry points. Verify 400 boundary pairs, events and mutation, custom matchers/shops, NBTAPI enabled/disabled, real sample groups and allocations. Build a separate loopback server with the supplied current core. Exercise real browse GUI sorting, filtering, stock toggle, pagination and item selection through packet clients and actual inventory events. Repeat retained transfer/close/display regressions where applicable.
 - [ ] 4. Run one fresh whole-diff review, resolve material findings with RED/GREEN tests, clean core-module check/shadow build, validate JAR structure, source/version/hash matching, configuration/persistence compatibility. Deliver JAR, source, Chinese report and sanitized evidence, publish matching branch to the existing user fork.
@@ -28,3 +28,5 @@
 - Pre-flight. Tasks 1 and 2 share MarketUtils but use independent helpers. Task 3 invokes both real integrated helpers and native GUI. Existing audit data is input evidence, and its candidate implementation is not an integrated product test.
 - Implementation choice. Put grouping preparation next to the built-in matcher in a factory returning BiPredicate. Its cache is held only by the predicate created in groupShopsByItem. Ordinary matches is kept intact, avoiding a second product algorithm in the menu class.
 - Implementation choice. Use the minimal P2-A direct material read. The P2-B material index changes read timing and shared list ownership beyond the verified scope.
+
+- Task 1 complete. Three exact-class/generic material regressions reached RED for the absent helper and GREEN after integration. The focused grouping suite passes 5/5. A nested Mockito stubbing fixture failure was corrected separately and retained in material-fixture-stubbing.log.

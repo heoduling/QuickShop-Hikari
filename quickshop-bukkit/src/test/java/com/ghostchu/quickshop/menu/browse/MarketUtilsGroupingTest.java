@@ -17,6 +17,33 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MarketUtilsGroupingTest {
+  @Test void materialLookupUsesExactContainerWithoutCloningItsItem() {
+    ContainerShop shop = mock(ContainerShop.class);
+    when(shop.getMaterial()).thenReturn(Material.DIAMOND);
+    assertEquals(ContainerShop.class, shop.getClass());
+    assertEquals(Material.DIAMOND, MarketUtils.getItemMaterial(shop));
+    verify(shop, never()).getItem();
+  }
+
+  @Test void materialLookupRetainsUnknownContainerSubclassItemOverride() {
+    ContainerShop shop = mock(ContainerShop.class, withSettings().extraInterfaces(Runnable.class));
+    ItemStack overridden = item(Material.DIRT);
+    when(shop.getMaterial()).thenReturn(Material.DIAMOND);
+    when(shop.getItem()).thenReturn(overridden);
+    assertNotEquals(ContainerShop.class, shop.getClass());
+    assertEquals(Material.DIRT, MarketUtils.getItemMaterial(shop));
+    verify(shop).getItem();
+    verify(shop, never()).getMaterial();
+  }
+
+  @Test void materialLookupRetainsGenericShopEntryPoint() {
+    Shop shop = mock(Shop.class);
+    ItemStack original = item(Material.STONE);
+    when(shop.getItem()).thenReturn(original);
+    assertEquals(Material.STONE, MarketUtils.getItemMaterial(shop));
+    verify(shop).getItem();
+  }
+
   @BeforeAll static void initializeShop() throws Exception {
     Plugin plugin = mock(Plugin.class);
     when(plugin.getName()).thenReturn("QuickShop");
