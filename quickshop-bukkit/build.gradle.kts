@@ -125,6 +125,7 @@ sourceSets {
 
 tasks.named<ProcessResources>("processResources") {
     val pluginVersion = project.version.toString()
+    inputs.property("pluginVersion", pluginVersion)
     val pluginArtifactId = project.name
     filesMatching("plugin.yml") {
         expand(mapOf("project" to mapOf("version" to pluginVersion, "artifactId" to pluginArtifactId)))
