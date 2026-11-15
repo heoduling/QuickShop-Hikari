@@ -9,6 +9,10 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.function.BiPredicate;
+
 /**
  * A simple impl for ItemMatcher
  *
@@ -97,5 +101,65 @@ public class BukkitItemMatcherImpl implements ItemMatcher {
       }
     }
     return tester.isSimilar(original);
+  }
+
+  /**
+   * Creates comparison state for one grouping call over stable item snapshots.
+   * Event listeners receive fresh copies on every comparison.
+   */
+  public BiPredicate<ItemStack, ItemStack> createGroupingMatcher() {
+
+    final Map<ItemStack, PreparedItem> preparedItems = new IdentityHashMap<>();
+    return (original, tester)->{
+      if(original == null || tester == null) {
+        return original == tester;
+      }
+      if(original.isSimilar(tester)) {
+        return true;
+      }
+
+      final ShopItemMatchEvent event = new ShopItemMatchEvent(original.clone(), tester.clone());
+      event.callEvent();
+      if(event.matches()) {
+        return true;
+      }
+
+      final PreparedItem preparedOriginal = preparedItems.computeIfAbsent(original, PreparedItem::new);
+      final PreparedItem preparedTester = preparedItems.computeIfAbsent(tester, PreparedItem::new);
+      final ItemStack normalizedOriginal = preparedOriginal.normalized();
+      final ItemStack normalizedTester = preparedTester.normalized();
+      final String originalShopId = preparedOriginal.shopId();
+      if(originalShopId != null && originalShopId.equals(preparedTester.shopId())) {
+        return true;
+      }
+      return normalizedTester.isSimilar(normalizedOriginal);
+    };
+  }
+
+  private final class PreparedItem {
+    private final ItemStack source;
+    private ItemStack normalized;
+    private String shopId;
+    private boolean shopIdRead;
+
+    private PreparedItem(final ItemStack source) {
+      this.source = source;
+    }
+
+    private ItemStack normalized() {
+      if(normalized == null) {
+        normalized = source.clone();
+        normalized.setAmount(1);
+      }
+      return normalized;
+    }
+
+    private String shopId() {
+      if(!shopIdRead) {
+        shopId = plugin.platform().getItemShopId(normalized());
+        shopIdRead = true;
+      }
+      return shopId;
+    }
   }
 }

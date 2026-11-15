@@ -5,6 +5,7 @@ import com.ghostchu.quickshop.api.QuickShopAPI;
 import com.ghostchu.quickshop.api.shop.ItemMatcher;
 import com.ghostchu.quickshop.api.shop.Shop;
 import com.ghostchu.quickshop.shop.ContainerShop;
+import com.ghostchu.quickshop.util.matcher.item.BukkitItemMatcherImpl;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
@@ -17,6 +18,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MarketUtilsGroupingTest {
+  @Test void customBuiltInMatcherSubclassKeepsItsOverriddenRule() {
+    QuickShop plugin = mock(QuickShop.class);
+    BukkitItemMatcherImpl custom = new BukkitItemMatcherImpl(plugin) {
+      @Override public boolean matches(ItemStack original, ItemStack tester) {
+        return original.getType() == tester.getType();
+      }
+
+      @Override public java.util.function.BiPredicate<ItemStack, ItemStack> createGroupingMatcher() {
+        throw new AssertionError("Subclass must use its original matcher entry point");
+      }
+    };
+    when(plugin.getItemMatcher()).thenReturn(custom);
+    var a = shop(item(Material.STONE), 1, true, 1);
+    var b = shop(item(Material.STONE), 2, true, 1);
+    try(var quickshop = mockStatic(QuickShop.class)) {
+      quickshop.when(QuickShop::getInstance).thenReturn(plugin);
+      assertEquals(List.of(a, b), MarketUtils.groupShopsByItem(List.of(a, b)).get(0).getShops());
+    }
+  }
+
   @Test void materialLookupUsesExactContainerWithoutCloningItsItem() {
     ContainerShop shop = mock(ContainerShop.class);
     when(shop.getMaterial()).thenReturn(Material.DIAMOND);

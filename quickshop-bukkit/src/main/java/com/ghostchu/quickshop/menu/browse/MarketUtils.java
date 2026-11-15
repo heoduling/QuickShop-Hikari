@@ -22,6 +22,7 @@ import com.ghostchu.quickshop.api.shop.ItemMatcher;
 import com.ghostchu.quickshop.api.shop.Shop;
 import com.ghostchu.quickshop.common.util.CommonUtil;
 import com.ghostchu.quickshop.shop.ContainerShop;
+import com.ghostchu.quickshop.util.matcher.item.BukkitItemMatcherImpl;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -34,6 +35,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BiPredicate;
 
 /**
  * MarketUtils - Utility class for market/browse operations Handles grouping shops by item,
@@ -70,6 +72,8 @@ public final class MarketUtils {
     final Map<Material, List<MarketItemGroup>> groupsByMat = new EnumMap<>(Material.class);
     final Map<MarketItemGroup, ItemStack> representatives = new IdentityHashMap<>();
     final ItemMatcher matcher = QuickShop.getInstance().getItemMatcher();
+    final BiPredicate<ItemStack, ItemStack> matches = matcher.getClass() == BukkitItemMatcherImpl.class
+        ? ((BukkitItemMatcherImpl)matcher).createGroupingMatcher() : matcher::matches;
 
     for(final Shop shop : shops) {
       final ItemStack item = shop.getItem();
@@ -77,7 +81,7 @@ public final class MarketUtils {
       final List<MarketItemGroup> matGroups = groupsByMat.computeIfAbsent(item.getType(), k->new ArrayList<>());
       // Find existing group that matches this shop's item
       for(final MarketItemGroup group : matGroups) {
-        if(matcher.matches(representatives.get(group), item)) {
+        if(matches.test(representatives.get(group), item)) {
           matchingGroup = group;
           break;
         }
